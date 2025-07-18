@@ -1,0 +1,122 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environments
+venv/
+ENV/
+env/
+bq-venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Google Cloud
+.gcloud/
+*.json
+!*template.json
+
+# Credentials and sensitive data
+.env
+.env.local
+.env.*.local
+credentials/
+secrets/
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/
+
+# Backup files
+*.backup
+*.bak
+
+# Node (if applicable)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# BigQuery specific
+*.sql.backup
+query_results/
+
+# Documentation build artifacts
+_build/
+*.pdf
+
+# Cache directories
+.cache/
+*.cache
+
+# Session files
+.bash_history
+.bash_logout
+.bashrc
+.profile
+.sudo_as_admin_successful
+.wget-hsts
+.motd_shown
+
+# User config files
+.npmrc
+.gitconfig
+.clasprc.json
+.claude.json
+.claude.json.backup
+
+# Tool directories
+.claude/
+.config/
+.cursor-server/
+.landscape/
+.npm-global/
+.npm/
+.ssh/
+
+# Google Cloud SDK
+google-cloud-sdk/
+
+# Other project directories
+bigquery-optimizer/
+campaign_id/
+daily-data-update/
+meta-ads-connector/
+ss/
+
+# Package files
+npm-global-packages.txt
+optimized-bigquery-script.gs
