@@ -1,0 +1,7 @@
+google-cloud-bigquery==3.11.4
+pandas==2.0.3
+gspread==5.10.0
+gspread-dataframe==3.3.1
+google-auth==2.22.0
+google-auth-oauthlib==1.0.0
+pydata-google-auth==1.8.2
