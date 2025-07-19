@@ -67,27 +67,22 @@ This document provides comprehensive documentation for the GDV (Gross Donation V
 
 ### 2. campaign_meta
 **Purpose**: Production campaign metadata and lifecycle management  
-**Row Count**: 1,563  
+**Row Count**: 1,563+  
 **Update Frequency**: Daily  
 
 | Column | Type | Description |
 |--------|------|-------------|
+| project_id | INTEGER | Campaign project ID |
 | short_url | STRING | Primary campaign identifier |
-| project_id | INTEGER | Secondary identifier |
-| project_name | STRING | Human-readable campaign name |
-| ngo | STRING | Partner NGO organization |
-| issue | STRING | Campaign issue/topic |
-| SQUAD | STRING | Team assignment |
-| dm | STRING | Digital Marketing team member |
-| content | STRING | Content creator |
-| visual | STRING | Visual designer |
-| isu | STRING | Issue owner |
 | priority | STRING | Campaign priority level |
 | grade | STRING | Campaign grade/rating |
+| isu | STRING | Issue owner |
+| content | STRING | Content creator |
 | status | STRING | Campaign status (OPTIMIZED, END, etc.) |
-| tag | STRING | Campaign tags |
-| create_date | DATETIME | Campaign creation timestamp |
-| optimized_date | DATETIME | Optimization timestamp |
+| tags | STRING (REPEATED) | Campaign tags array |
+| created_at | TIMESTAMP | Campaign creation timestamp |
+| optimized_at | TIMESTAMP | Optimization timestamp |
+| SQUAD | STRING | Team assignment |
 
 ### 3. adname-detail
 **Purpose**: Detailed information about individual ads  
@@ -142,32 +137,29 @@ This document provides comprehensive documentation for the GDV (Gross Donation V
 
 ### 5. gdv-daily
 **Purpose**: Core table for daily campaign performance and ROI analysis  
-**Row Count**: 1,282,023  
+**Row Count**: 1,282,023+  
 **Update Frequency**: Daily at 07:37 AM  
 **Partitioning**: By date field  
 **Clustering**: dm, content, isu, short_url  
 
 | Column | Type | Description |
 |--------|------|-------------|
-| short_url | STRING | Campaign identifier |
 | date | DATE | Performance date |
-| project_name | STRING | Campaign name |
-| ngo | STRING | Partner NGO organization |
-| SQUAD | STRING | Team assignment |
-| dm | STRING | Digital Marketing team member |
-| content | STRING | Content creator |
-| visual | STRING | Visual designer |
-| isu | STRING | Issue owner |
-| cost | INTEGER | Daily ad spend |
-| impressions | INTEGER | Daily impressions |
-| link_clicks | INTEGER | Daily clicks |
-| website_purchases | INTEGER | Daily conversions |
-| trx | INTEGER | Total daily transactions |
-| trx_ads | INTEGER | Daily transactions from ads |
+| project_id | INTEGER | Campaign project ID |
+| short_url | STRING | Campaign identifier |
 | gdv | INTEGER | Total daily GDV |
 | gdv_ads | INTEGER | Daily GDV from ads |
+| cost | INTEGER | Daily ad spend |
+| dm | STRING | Digital Marketing team member |
+| ngo | STRING | Partner NGO organization |
+| isu | STRING | Issue owner |
+| content | STRING | Content creator |
 | ads_donasi | FLOAT | ROI metric (cost/gdv_ads) |
 | % gdv ads | FLOAT | Percentage of GDV from ads |
+| SQUAD | STRING | Team assignment |
+| trx | INTEGER | Total daily transactions |
+| trx_ads | INTEGER | Daily transactions from ads |
+| visual | STRING | Visual designer |
 
 ### 6. gdv-target
 **Purpose**: Monthly performance targets by team  
