@@ -150,10 +150,13 @@ function createOrUpdateAdSheet(data) {
     sheet.clear();
   }
   
-  // Set headers for ad data - using exact BigQuery column names
+  // Set headers for ad data - using exact BigQuery column names + Meta API data
   const headers = [
     'short_url',
-    'ad_name', 
+    'ad_id',
+    'ad_name',
+    'title',
+    'body', 
     'permalink',
     'date',
     'status',
@@ -171,10 +174,33 @@ function createOrUpdateAdSheet(data) {
   
   // Write data if available
   if (data.length > 0) {
-    sheet.getRange(2, 1, data.length, data[0].length).setValues(data);
+    console.log(`Writing ${data.length} rows to Ad Details sheet`);
+    console.log(`Expected columns: ${headers.length}, Data columns: ${data[0].length}`);
+    console.log(`Sample row: ${JSON.stringify(data[0])}`);
+    
+    // Ensure data matches expected column count
+    const expectedColumns = headers.length;
+    const processedData = data.map(row => {
+      if (row.length < expectedColumns) {
+        // Pad with empty strings if row is too short
+        const paddedRow = [...row];
+        while (paddedRow.length < expectedColumns) {
+          paddedRow.push('');
+        }
+        return paddedRow;
+      } else if (row.length > expectedColumns) {
+        // Trim if row is too long
+        return row.slice(0, expectedColumns);
+      }
+      return row;
+    });
+    
+    sheet.getRange(2, 1, processedData.length, expectedColumns).setValues(processedData);
     
     // Format data
-    formatAdData(sheet, data.length, headers.length);
+    formatAdData(sheet, processedData.length, headers.length);
+  } else {
+    console.log('No data to write to Ad Details sheet');
   }
   
   // Auto-resize columns
@@ -213,16 +239,16 @@ function formatAdHeaders(sheet, columnCount) {
 function formatAdData(sheet, rowCount, columnCount) {
   if (rowCount === 0) return;
   
-  // Format date column (column 4)
-  sheet.getRange(2, 4, rowCount, 1)
+  // Format date column (column 7)
+  sheet.getRange(2, 7, rowCount, 1)
     .setNumberFormat('yyyy-mm-dd');
   
-  // Format inactive_days column (column 6) as integer
-  sheet.getRange(2, 6, rowCount, 1)
+  // Format inactive_days column (column 9) as integer
+  sheet.getRange(2, 9, rowCount, 1)
     .setNumberFormat('0');
   
-  // Apply conditional formatting for status (column 5)
-  const statusRange = sheet.getRange(2, 5, rowCount, 1);
+  // Apply conditional formatting for status (column 8)
+  const statusRange = sheet.getRange(2, 8, rowCount, 1);
   
   // Clear existing rules
   const rules = sheet.getConditionalFormatRules();
@@ -254,13 +280,13 @@ function formatAdData(sheet, rowCount, columnCount) {
   
   sheet.setConditionalFormatRules([activeRule, pausedRule, noCostRule]);
   
-  // Make permalinks clickable (column 3)
-  const permalinkRange = sheet.getRange(2, 3, rowCount, 1);
+  // Make permalinks clickable (column 6)
+  const permalinkRange = sheet.getRange(2, 6, rowCount, 1);
   const permalinkValues = permalinkRange.getValues();
   
   permalinkValues.forEach((row, index) => {
     if (row[0] && row[0].toString().startsWith('http')) {
-      const cell = sheet.getRange(index + 2, 3);
+      const cell = sheet.getRange(index + 2, 6);
       cell.setFormula(`=HYPERLINK("${row[0]}", "View Ad")`);
     }
   });

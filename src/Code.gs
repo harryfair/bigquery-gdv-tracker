@@ -142,6 +142,7 @@ function fetchAdData() {
       ad_details AS (
         SELECT 
           ad.short_url,
+          ad.ad_id,
           ad.ad_name,
           ad.permalink,
           ad.date as published_date,
@@ -164,6 +165,7 @@ function fetchAdData() {
       )
       SELECT 
         ad.short_url,
+        ad.ad_id,
         ad.ad_name,
         ad.permalink,
         FORMAT_DATE('%Y-%m-%d', ad.published_date) as date,
@@ -215,15 +217,16 @@ function fetchAdData() {
       const values = row.f;
       processedData.push([
         values[0].v || '',  // short_url
-        values[1].v || '',  // ad_name
-        values[2].v || '',  // permalink
-        values[3].v || '',  // date
-        values[4].v || '',  // status
-        parseInt(values[5].v) || null,  // inactive_days
-        values[6].v || '',  // dm
-        values[7].v || '',  // content
-        values[8].v || '',  // isu
-        values[9].v || ''   // visual
+        values[1].v || '',  // ad_id
+        values[2].v || '',  // ad_name
+        values[3].v || '',  // permalink
+        values[4].v || '',  // date
+        values[5].v || '',  // status
+        parseInt(values[6].v) || null,  // inactive_days
+        values[7].v || '',  // dm
+        values[8].v || '',  // content
+        values[9].v || '',  // isu
+        values[10].v || ''  // visual
       ]);
     });
     
@@ -272,7 +275,7 @@ function exportToSheet() {
 }
 
 /**
- * Export ad-level data to a new worksheet
+ * Export ad-level data to a new worksheet (without Meta API data)
  */
 function exportAdData() {
   try {
@@ -289,13 +292,30 @@ function exportAdData() {
       return;
     }
     
+    // Add empty title and body columns to match new sheet format
+    const paddedData = data.map(row => [
+      row[0],  // short_url
+      row[1],  // ad_id
+      row[2],  // ad_name
+      '',      // title (empty)
+      '',      // body (empty)
+      row[3],  // permalink
+      row[4],  // date
+      row[5],  // status
+      row[6],  // inactive_days
+      row[7],  // dm
+      row[8],  // content
+      row[9],  // isu
+      row[10]  // visual
+    ]);
+    
     // Create or update ad sheet
-    const sheet = createOrUpdateAdSheet(data);
+    const sheet = createOrUpdateAdSheet(paddedData);
     
     // Show success message
     ui.alert(
       'Ad Export Complete', 
-      `Successfully exported ${data.length} ad rows to "Ad Details" sheet`, 
+      `Successfully exported ${paddedData.length} ad rows to "Ad Details" sheet (title/body columns empty - use "Export Ads with Creatives" to fill them)`, 
       ui.ButtonSet.OK
     );
     
@@ -305,6 +325,169 @@ function exportAdData() {
     console.error('Ad export error:', error);
   }
 }
+
+/**
+ * Export ad-level data with smart incremental creative updates
+ * @param {boolean} silent - If true, suppresses UI alerts (for when called from another function)
+ */
+function exportAdDataWithLiveCreatives(silent = false) {
+  try {
+    const ui = SpreadsheetApp.getUi();
+    
+    // Check if Meta API is configured
+    const accessToken = getMetaAPIToken();
+    if (!accessToken) {
+      if (!silent) {
+        ui.alert(
+          'Meta API Not Configured', 
+          'Please set your Meta API access token using setMetaAPIToken(token) function in the Apps Script editor.', 
+          ui.ButtonSet.OK
+        );
+      }
+      return;
+    }
+    
+    // Show progress only if not silent
+    if (!silent) {
+      ui.alert('Starting Smart Creative Export', 'Fetching ad-level data from BigQuery...', ui.ButtonSet.OK);
+    }
+    
+    // Fetch fresh ad data from BigQuery
+    const freshData = fetchAdData();
+    
+    if (freshData.length === 0) {
+      if (!silent) {
+        ui.alert('No Ad Data', 'No ad data found for client: ' + CONFIG.CLIENT_NAME, ui.ButtonSet.OK);
+      }
+      return;
+    }
+    
+    // Check for existing sheet and find rows that need creative data
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const existingSheet = ss.getSheetByName('Ad Details');
+    let adIdsToFetch = [];
+    let adRowMap = {};
+    let lastProcessedRow = getLastProcessedRow();
+    
+    if (existingSheet && existingSheet.getLastRow() > 1) {
+      console.log('Found existing Ad Details sheet - checking for missing creative data...');
+      console.log(`Last processed row from previous session: ${lastProcessedRow}`);
+      
+      // Create fresh sheet with BigQuery data first, preserving existing creative data
+      const existingData = existingSheet.getRange(2, 1, existingSheet.getLastRow() - 1, existingSheet.getLastColumn()).getValues();
+      const existingCreativeMap = {};
+      
+      // Extract existing creative data
+      existingData.forEach(row => {
+        const adId = row[1];
+        const title = row[3] || '';
+        const body = row[4] || '';
+        if (title || body) {  // Consider it existing if either title OR body exists
+          existingCreativeMap[adId] = { title, body };
+        }
+      });
+      
+      console.log(`Preserved creative data for ${Object.keys(existingCreativeMap).length} existing ads`);
+      
+      // Create updated data with fresh BigQuery info + existing creative data
+      const updatedData = freshData.map((row, index) => {
+        const adId = row[1];
+        const existingCreative = existingCreativeMap[adId];
+        const rowNumber = index + 2;
+        
+        adRowMap[adId] = rowNumber; // Build row map
+        
+        if (existingCreative) {
+          // Use existing creative data
+          return [
+            row[0], row[1], row[2],           // BigQuery data
+            existingCreative.title,           // Existing title
+            existingCreative.body,            // Existing body
+            row[3], row[4], row[5], row[6],   // More BigQuery data
+            row[7], row[8], row[9], row[10]
+          ];
+        } else {
+          // Missing creative data - only add to fetch list if we haven't processed this row yet
+          if (rowNumber > lastProcessedRow) {
+            adIdsToFetch.push(adId);
+          }
+          return [
+            row[0], row[1], row[2],           // BigQuery data
+            '', '',                           // Empty title/body
+            row[3], row[4], row[5], row[6],   // More BigQuery data
+            row[7], row[8], row[9], row[10]
+          ];
+        }
+      });
+      
+      // Update sheet with merged data
+      const sheet = createOrUpdateAdSheet(updatedData);
+      
+    } else {
+      console.log('Creating new Ad Details sheet...');
+      
+      // Reset progress for new sheet
+      resetProcessingProgress();
+      
+      // Create fresh sheet with empty creative data
+      const paddedData = freshData.map((row, index) => {
+        const adId = row[1];
+        const rowNumber = index + 2;
+        adRowMap[adId] = rowNumber;
+        adIdsToFetch.push(adId);
+        
+        return [
+          row[0], row[1], row[2],           // BigQuery data
+          '', '',                           // Empty title/body
+          row[3], row[4], row[5], row[6],   // More BigQuery data
+          row[7], row[8], row[9], row[10]
+        ];
+      });
+      
+      const sheet = createOrUpdateAdSheet(paddedData);
+    }
+    
+    // Remove duplicates and filter empty IDs
+    adIdsToFetch = [...new Set(adIdsToFetch.filter(id => id && id !== ''))];
+    
+    console.log(`Need to fetch creative data for ${adIdsToFetch.length} ads (continuing from row ${lastProcessedRow + 1})`);
+    
+    if (adIdsToFetch.length === 0) {
+      if (!silent) {
+        ui.alert('All Complete!', 'All ads have been processed. No updates needed.', ui.ButtonSet.OK);
+      }
+      return;
+    }
+    
+    // Show progress for Meta API only if not silent
+    if (!silent) {
+      ui.alert('Fetching Missing Creative Data', `Now fetching creative data for ${adIdsToFetch.length} ads that don't have title/body data yet. Watch the sheet update in real-time!`, ui.ButtonSet.OK);
+    }
+    
+    // Get the sheet reference
+    const sheet = ss.getSheetByName('Ad Details');
+    
+    // Fetch creative data with live sheet updates (only for missing ads)
+    fetchAdCreativesBatchWithLiveUpdates(adIdsToFetch, sheet, adRowMap, 5, 500);
+    
+    // Show success message only if not silent
+    if (!silent) {
+      ui.alert(
+        'Smart Creative Export Complete', 
+        `Successfully fetched creative data for ${adIdsToFetch.length} ads! Blank cells remain blank if no data is available.`, 
+        ui.ButtonSet.OK
+      );
+    }
+    
+  } catch (error) {
+    const ui = SpreadsheetApp.getUi();
+    if (!silent) {
+      ui.alert('Error', 'Failed to export live creative data: ' + error.toString(), ui.ButtonSet.OK);
+    }
+    console.error('Live creative export error:', error);
+  }
+}
+
 
 /**
  * Discover actual table schemas in BigQuery
@@ -415,6 +598,213 @@ function discoverTableSchemas() {
       SpreadsheetApp.getUi().ButtonSet.OK
     );
     console.error('Schema discovery error:', error);
+  }
+}
+
+/**
+ * Gets all data from both GDV Export and Ad Details sheets
+ * @return {Object} Combined data object with campaign and ad level data
+ */
+function getAllData() {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const result = {
+      campaigns: [],
+      ads: [],
+      summary: {
+        totalCampaigns: 0,
+        totalAds: 0,
+        activeCampaigns: 0,
+        pausedCampaigns: 0,
+        adsWithCreatives: 0
+      }
+    };
+    
+    // Get GDV Export (Campaign) data
+    const campaignSheet = ss.getSheetByName(CONFIG.SHEET.NAME);
+    if (campaignSheet && campaignSheet.getLastRow() > 1) {
+      const campaignHeaders = campaignSheet.getRange(1, 1, 1, campaignSheet.getLastColumn()).getValues()[0];
+      const campaignData = campaignSheet.getRange(2, 1, campaignSheet.getLastRow() - 1, campaignSheet.getLastColumn()).getValues();
+      
+      result.campaigns = campaignData.map(row => {
+        const campaign = {};
+        campaignHeaders.forEach((header, index) => {
+          campaign[header] = row[index];
+        });
+        return campaign;
+      });
+      
+      result.summary.totalCampaigns = result.campaigns.length;
+      result.summary.activeCampaigns = result.campaigns.filter(c => c.status === 'Active').length;
+      result.summary.pausedCampaigns = result.campaigns.filter(c => c.status === 'Paused').length;
+    }
+    
+    // Get Ad Details data
+    const adSheet = ss.getSheetByName('Ad Details');
+    if (adSheet && adSheet.getLastRow() > 1) {
+      const adHeaders = adSheet.getRange(1, 1, 1, adSheet.getLastColumn()).getValues()[0];
+      const adData = adSheet.getRange(2, 1, adSheet.getLastRow() - 1, adSheet.getLastColumn()).getValues();
+      
+      result.ads = adData.map(row => {
+        const ad = {};
+        adHeaders.forEach((header, index) => {
+          ad[header] = row[index];
+        });
+        return ad;
+      });
+      
+      result.summary.totalAds = result.ads.length;
+      result.summary.adsWithCreatives = result.ads.filter(ad => ad.title && ad.body).length;
+    }
+    
+    console.log(`Retrieved ${result.summary.totalCampaigns} campaigns and ${result.summary.totalAds} ads`);
+    console.log(`Summary: ${result.summary.activeCampaigns} active campaigns, ${result.summary.adsWithCreatives} ads with creatives`);
+    
+    return result;
+    
+  } catch (error) {
+    console.error('Error getting all data:', error);
+    throw new Error('Failed to get all data: ' + error.toString());
+  }
+}
+
+/**
+ * Exports all data to a new combined sheet
+ */
+function exportAllDataToSheet() {
+  try {
+    const ui = SpreadsheetApp.getUi();
+    
+    // First, fetch fresh data from BigQuery
+    ui.alert('Step 1/3', 'Fetching fresh data from BigQuery...', ui.ButtonSet.OK);
+    
+    // Export campaign data
+    const campaignData = fetchBigQueryData();
+    if (campaignData.length > 0) {
+      createOrUpdateSheet(campaignData);
+    }
+    
+    // Export ad data
+    const adData = fetchAdData();
+    if (adData.length > 0) {
+      // Add empty title and body columns
+      const paddedAdData = adData.map(row => [
+        row[0], row[1], row[2], '', '', row[3], row[4], row[5], row[6], row[7], row[8], row[9], row[10]
+      ]);
+      createOrUpdateAdSheet(paddedAdData);
+    }
+    
+    // Now run creative updates if Meta API is configured
+    const accessToken = getMetaAPIToken();
+    if (accessToken && adData.length > 0) {
+      ui.alert('Step 2/3', 'Fetching ad creatives from Meta API...', ui.ButtonSet.OK);
+      
+      // Run the live creative updates (silent mode = true)
+      exportAdDataWithLiveCreatives(true);
+    }
+    
+    // Finally, combine all data
+    ui.alert('Step 3/3', 'Combining all data into summary sheet...', ui.ButtonSet.OK);
+    
+    const allData = getAllData();
+    
+    if (allData.campaigns.length === 0 && allData.ads.length === 0) {
+      ui.alert('No Data', 'No data found to combine', ui.ButtonSet.OK);
+      return;
+    }
+    
+    // Create combined sheet
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheetName = 'All Data Combined';
+    let sheet = ss.getSheetByName(sheetName);
+    
+    if (!sheet) {
+      sheet = ss.insertSheet(sheetName);
+    } else {
+      sheet.clear();
+    }
+    
+    let currentRow = 1;
+    
+    // Add summary section
+    sheet.getRange(currentRow, 1, 1, 2).setValues([['DATA SUMMARY', '']]);
+    sheet.getRange(currentRow, 1, 1, 2).setFontWeight('bold').setFontSize(14);
+    currentRow += 2;
+    
+    const summaryData = [
+      ['Total Campaigns:', allData.summary.totalCampaigns],
+      ['Active Campaigns:', allData.summary.activeCampaigns],
+      ['Paused Campaigns:', allData.summary.pausedCampaigns],
+      ['Total Ads:', allData.summary.totalAds],
+      ['Ads with Creatives:', allData.summary.adsWithCreatives]
+    ];
+    
+    sheet.getRange(currentRow, 1, summaryData.length, 2).setValues(summaryData);
+    sheet.getRange(currentRow, 1, summaryData.length, 1).setFontWeight('bold');
+    currentRow += summaryData.length + 2;
+    
+    // Add campaign data section
+    if (allData.campaigns.length > 0) {
+      sheet.getRange(currentRow, 1).setValue('CAMPAIGN DATA');
+      sheet.getRange(currentRow, 1).setFontWeight('bold').setFontSize(12);
+      currentRow += 1;
+      
+      const campaignHeaders = Object.keys(allData.campaigns[0]);
+      sheet.getRange(currentRow, 1, 1, campaignHeaders.length).setValues([campaignHeaders]);
+      sheet.getRange(currentRow, 1, 1, campaignHeaders.length)
+        .setBackground('#4285F4').setFontColor('#FFFFFF').setFontWeight('bold');
+      currentRow += 1;
+      
+      const campaignRows = allData.campaigns.map(campaign => 
+        campaignHeaders.map(header => campaign[header])
+      );
+      
+      sheet.getRange(currentRow, 1, campaignRows.length, campaignHeaders.length).setValues(campaignRows);
+      currentRow += campaignRows.length + 2;
+    }
+    
+    // Add ad data section
+    if (allData.ads.length > 0) {
+      sheet.getRange(currentRow, 1).setValue('AD DETAILS DATA');
+      sheet.getRange(currentRow, 1).setFontWeight('bold').setFontSize(12);
+      currentRow += 1;
+      
+      const adHeaders = Object.keys(allData.ads[0]);
+      sheet.getRange(currentRow, 1, 1, adHeaders.length).setValues([adHeaders]);
+      sheet.getRange(currentRow, 1, 1, adHeaders.length)
+        .setBackground('#34A853').setFontColor('#FFFFFF').setFontWeight('bold');
+      currentRow += 1;
+      
+      const adRows = allData.ads.map(ad => 
+        adHeaders.map(header => ad[header])
+      );
+      
+      sheet.getRange(currentRow, 1, adRows.length, adHeaders.length).setValues(adRows);
+    }
+    
+    // Auto-resize all columns
+    for (let i = 1; i <= sheet.getLastColumn(); i++) {
+      sheet.autoResizeColumn(i);
+    }
+    
+    // Show success message
+    const creativeStatus = accessToken ? 
+      `• ${allData.summary.adsWithCreatives} ads with creative data` : 
+      '• Meta API not configured - run Settings > Set Meta API Token to enable creative fetching';
+      
+    ui.alert(
+      'Export Complete', 
+      `Successfully exported all data to "${sheetName}" sheet:\n` +
+      `• ${allData.summary.totalCampaigns} campaigns\n` +
+      `• ${allData.summary.totalAds} ads\n` +
+      creativeStatus, 
+      ui.ButtonSet.OK
+    );
+    
+  } catch (error) {
+    const ui = SpreadsheetApp.getUi();
+    ui.alert('Error', 'Failed to export all data: ' + error.toString(), ui.ButtonSet.OK);
+    console.error('Export all data error:', error);
   }
 }
 

@@ -9,14 +9,59 @@ function onOpen() {
   const ui = SpreadsheetApp.getUi();
   
   ui.createMenu('BigQuery Export')
-    .addItem('📊 Export Campaign Data', 'exportToSheet')
-    .addItem('📝 Export Ad Details', 'exportAdData')
-    .addItem('📈 Create Summary', 'createSummarySheet')
+    .addItem('📋 All Data', 'exportAllDataToSheet')
+    .addItem('📊 Retrieve Data for GDV Export', 'exportToSheet')
+    .addItem('📝 Retrieve Data for Ad Details', 'exportAdDataWithLiveCreatives')
     .addSeparator()
-    .addItem('🔍 Discover Table Schemas', 'discoverTableSchemas')
-    .addItem('🔌 Test Connection', 'testBigQueryConnection')
-    .addItem('ℹ️ About', 'showAbout')
+    .addItem('🔑 Settings', 'showSettingsMenu')
     .addToUi();
+}
+
+/**
+ * Shows settings submenu
+ */
+function showSettingsMenu() {
+  const ui = SpreadsheetApp.getUi();
+  
+  const result = ui.alert(
+    'Settings Menu',
+    'Choose an option:\n\n' +
+    '1. Set Meta API Token\n' +
+    '2. Test Meta API\n' +
+    '3. Reset Creative Progress\n' +
+    '4. Test BigQuery Connection\n' +
+    '5. About\n\n' +
+    'Enter option number:',
+    ui.ButtonSet.OK_CANCEL
+  );
+  
+  if (result === ui.Button.OK) {
+    const choice = ui.prompt('Settings', 'Enter option number (1-5):', ui.ButtonSet.OK_CANCEL);
+    
+    if (choice.getSelectedButton() === ui.Button.OK) {
+      const option = choice.getResponseText().trim();
+      
+      switch(option) {
+        case '1':
+          showSetTokenDialog();
+          break;
+        case '2':
+          showMetaAPITestDialog();
+          break;
+        case '3':
+          showResetProgressDialog();
+          break;
+        case '4':
+          testBigQueryConnection();
+          break;
+        case '5':
+          showAbout();
+          break;
+        default:
+          ui.alert('Invalid Option', 'Please enter a number between 1 and 5', ui.ButtonSet.OK);
+      }
+    }
+  }
 }
 
 /**
@@ -24,47 +69,20 @@ function onOpen() {
  */
 function showAbout() {
   const ui = SpreadsheetApp.getUi();
-  const htmlContent = `
-    <div style="font-family: Arial, sans-serif; padding: 20px;">
-      <h2>BigQuery GDV Tracker</h2>
-      <p><strong>Client:</strong> ${CONFIG.CLIENT_NAME}</p>
-      <p><strong>Project:</strong> ${CONFIG.BIGQUERY.PROJECT_ID}</p>
-      <p><strong>Dataset:</strong> ${CONFIG.BIGQUERY.DATASET_ID}</p>
-      <br>
-      <h3>Features:</h3>
-      <ul>
-        <li>Export campaign data from BigQuery</li>
-        <li>Calculate ROAS (Return on Ad Spend)</li>
-        <li>Track campaign status (Active/Paused)</li>
-        <li>Generate summary statistics</li>
-      </ul>
-      <br>
-      <p><strong>How to use:</strong></p>
-      <ol>
-        <li>Click "BigQuery Export" in the menu</li>
-        <li>Select "Export Data" to fetch latest data</li>
-        <li>Use "Create Summary" for aggregated statistics</li>
-      </ol>
-    </div>
-  `;
   
-  const htmlOutput = HtmlService.createHtmlOutput(htmlContent)
-    .setWidth(400)
-    .setHeight(450);
-  
-  ui.showModalDialog(htmlOutput, 'About BigQuery GDV Tracker');
+  ui.alert(
+    'About BigQuery GDV Tracker',
+    `Client: ${CONFIG.CLIENT_NAME}\n` +
+    `Project: ${CONFIG.BIGQUERY.PROJECT_ID}\n` +
+    `Dataset: ${CONFIG.BIGQUERY.DATASET_ID}\n\n` +
+    `Main Features:\n` +
+    `• Export All Data - Combines campaign and ad data\n` +
+    `• Update Ad Creatives - Fetches titles/bodies from Meta API\n\n` +
+    `Version: 2.0`,
+    ui.ButtonSet.OK
+  );
 }
 
-/**
- * Creates a sidebar for advanced options
- */
-function showSidebar() {
-  const html = HtmlService.createHtmlOutputFromFile('Sidebar')
-    .setTitle('Export Options')
-    .setWidth(300);
-  
-  SpreadsheetApp.getUi().showSidebar(html);
-}
 
 /**
  * Gets current configuration for display
@@ -97,3 +115,87 @@ function updateClientName(newClientName) {
   
   return 'Client name updated to: ' + newClientName;
 }
+
+/**
+ * Shows dialog to set Meta API token
+ */
+function showSetTokenDialog() {
+  const ui = SpreadsheetApp.getUi();
+  
+  const result = ui.prompt(
+    'Set Meta API Token',
+    'Enter your Meta API access token (it will be stored securely in Script Properties):',
+    ui.ButtonSet.OK_CANCEL
+  );
+  
+  if (result.getSelectedButton() === ui.Button.OK) {
+    const token = result.getResponseText().trim();
+    if (token) {
+      setMetaAPIToken(token);
+      ui.alert(
+        'Token Saved',
+        'Meta API token has been saved securely. You can now use Meta API functions.',
+        ui.ButtonSet.OK
+      );
+    } else {
+      ui.alert('Error', 'Please enter a valid token', ui.ButtonSet.OK);
+    }
+  }
+}
+
+/**
+ * Shows dialog to reset creative fetching progress
+ */
+function showResetProgressDialog() {
+  const ui = SpreadsheetApp.getUi();
+  
+  const lastProcessedRow = getLastProcessedRow();
+  
+  const result = ui.alert(
+    'Reset Creative Fetching Progress',
+    `Current progress: Last processed row ${lastProcessedRow}\n\nDo you want to reset progress and start fetching creative data from the beginning?`,
+    ui.ButtonSet.YES_NO
+  );
+  
+  if (result === ui.Button.YES) {
+    resetProcessingProgress();
+    ui.alert(
+      'Progress Reset',
+      'Creative fetching progress has been reset. Next run will start from the beginning.',
+      ui.ButtonSet.OK
+    );
+  }
+}
+
+/**
+ * Shows Meta API test dialog
+ */
+function showMetaAPITestDialog() {
+  const ui = SpreadsheetApp.getUi();
+  
+  const accessToken = getMetaAPIToken();
+  if (!accessToken) {
+    ui.alert(
+      'Meta API Not Configured',
+      'Please set your Meta API access token using setMetaAPIToken(token) function in the Apps Script editor first.',
+      ui.ButtonSet.OK
+    );
+    return;
+  }
+  
+  const result = ui.prompt(
+    'Test Meta API',
+    'Enter a Facebook Ad ID to test the Meta API connection:',
+    ui.ButtonSet.OK_CANCEL
+  );
+  
+  if (result.getSelectedButton() === ui.Button.OK) {
+    const adId = result.getResponseText().trim();
+    if (adId) {
+      testMetaAPIConnection(adId);
+    } else {
+      ui.alert('Error', 'Please enter a valid Ad ID', ui.ButtonSet.OK);
+    }
+  }
+}
+

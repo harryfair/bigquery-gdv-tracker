@@ -13,6 +13,13 @@ const CONFIG = {
   // Client filter
   CLIENT_NAME: 'Yayasan Amartha Indotama Bakti Pertiwi',
   
+  // Meta (Facebook) API settings
+  META_API: {
+    BASE_URL: 'https://graph.facebook.com/v22.0',
+    ACCESS_TOKEN: '', // This will be loaded from Script Properties
+    FIELDS: 'body,title,video_id,image_hash,object_id'
+  },
+  
   // Sheet settings
   SHEET: {
     NAME: 'GDV Export - Yayasan Amartha',
